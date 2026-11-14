@@ -1,0 +1,38 @@
+[package]
+name = "dep-xray"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Behavioral AST diff analyzer for dependency updates (Cargo.lock, package-lock.json, pnpm-lock.yaml)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/markankamaransheogarat-sys/dep-xray"
+homepage = "https://github.com/markankamaransheogarat-sys/dep-xray"
+documentation = "https://docs.rs/dep-xray"
+readme = "README.md"
+keywords = ["security", "supply-chain", "ast", "dependencies", "tree-sitter"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+clap = { version = "4.5", features = ["derive", "env"] }
+comfy-table = "7.1"
+dirs = "6.0"
+flate2 = "1.1"
+owo-colors = "4.2"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+similar = "2.7"
+tar = "0.4"
+thiserror = "2.0"
+tokio = { version = "1.44", features = ["rt-multi-thread", "macros", "sync", "fs", "process", "time"] }
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tree-sitter = "0.25"
+tree-sitter-javascript = "0.25"
+tree-sitter-rust = "0.24"
+tree-sitter-typescript = "0.23"
+
+[dev-dependencies]
+tempfile = "3.19"

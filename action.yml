@@ -1,0 +1,68 @@
+name: "dep-xray"
+description: "Behavioral AST diff analyzer for dependency updates (Cargo.lock, package-lock.json, pnpm-lock.yaml)"
+branding:
+  icon: "shield"
+  color: "orange"
+
+inputs:
+  base-ref:
+    description: "Base git ref (defaults to github.event.pull_request.base.sha or HEAD~1)"
+    required: false
+    default: ""
+  head-ref:
+    description: "Head git ref (defaults to github.event.pull_request.head.sha or HEAD)"
+    required: false
+    default: ""
+  fail-on:
+    description: "Minimum severity that fails the check: medium, high, critical, never"
+    required: false
+    default: "high"
+  format:
+    description: "Output format: terminal, markdown, sarif, json"
+    required: false
+    default: "markdown"
+  output-file:
+    description: "Optional file path to write the rendered report"
+    required: false
+    default: "dep-xray-report.md"
+
+outputs:
+  report-path:
+    description: "Path to the generated dep-xray report"
+    value: ${{ steps.run.outputs.report-path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Rust toolchain if missing
+      shell: bash
+      run: |
+        if ! command -v cargo >/dev/null 2>&1; then
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        fi
+
+    - name: Install dep-xray
+      shell: bash
+      run: |
+        if ! command -v dep-xray >/dev/null 2>&1; then
+          cargo install --git https://github.com/markankamaransheogarat-sys/dep-xray --locked || cargo install dep-xray
+        fi
+
+    - name: Run dep-xray
+      id: run
+      shell: bash
+      run: |
+        BASE="${{ inputs.base-ref }}"
+        HEAD="${{ inputs.head-ref }}"
+        if [ -z "$BASE" ]; then
+          BASE="${{ github.event.pull_request.base.sha || 'HEAD~1' }}"
+        fi
+        if [ -z "$HEAD" ]; then
+          HEAD="${{ github.event.pull_request.head.sha || 'HEAD' }}"
+        fi
+        echo "report-path=${{ inputs.output-file }}" >> "$GITHUB_OUTPUT"
+        dep-xray diff --base "$BASE" --head "$HEAD" \
+          --format "${{ inputs.format }}" \
+          --fail-on "${{ inputs.fail-on }}" \
+          --output "${{ inputs.output-file }}"
