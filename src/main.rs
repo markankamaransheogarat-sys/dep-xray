@@ -3,15 +3,16 @@
 #![forbid(unsafe_code)]
 
 use clap::Parser;
-use dep_xray::analyze_changes;
 use dep_xray::cli::{Cli, Command, SharedOptions};
 use dep_xray::error::{DepXrayError, Result};
 use dep_xray::fetcher::FetcherConfig;
 use dep_xray::fetcher::cache::default_cache_dir;
 use dep_xray::git::collect_changes_from_git;
 use dep_xray::lockfile::{LockfileKind, diff_lockfiles};
+use dep_xray::policy::IgnorePolicy;
 use dep_xray::report::render_report;
 use dep_xray::types::Verdict;
+use dep_xray::{analyze_changes_with_policy, inspect_archive};
 use std::process::ExitCode;
 
 #[tokio::main]
@@ -46,41 +47,64 @@ fn build_fetcher_config(shared: &SharedOptions) -> FetcherConfig {
     }
 }
 
+fn load_policy(shared: &SharedOptions) -> Result<IgnorePolicy> {
+    if let Some(path) = &shared.config {
+        return IgnorePolicy::from_file(path);
+    }
+    let default_path = std::path::Path::new(".dep-xray.toml");
+    if default_path.exists() {
+        return IgnorePolicy::from_file(default_path);
+    }
+    Ok(IgnorePolicy::default())
+}
+
 async fn run(cli: Cli) -> Result<Verdict> {
-    let (changes, base_ref, head_ref, shared) = match cli.command {
-        Command::Diff(args) => {
-            let (base, head) = args.resolve_refs();
-            let changes = collect_changes_from_git(&args.repo, &base, &head).await?;
-            (changes, Some(base), Some(head), args.shared)
+    let (report, shared) = match cli.command {
+        Command::Inspect(args) => {
+            let policy = load_policy(&args.shared)?;
+            let report = inspect_archive(&args.archive, args.shared.fail_on.into(), &policy)?;
+            (report, args.shared)
         }
-        Command::Lockfiles(args) => {
-            let new_path_str = args.new_lockfile.to_string_lossy().into_owned();
-            let kind = LockfileKind::from_path(&new_path_str).ok_or_else(|| {
+        other => {
+            let (changes, base_ref, head_ref, shared) = match other {
+                Command::Diff(args) => {
+                    let (base, head) = args.resolve_refs();
+                    let changes = collect_changes_from_git(&args.repo, &base, &head).await?;
+                    (changes, Some(base), Some(head), args.shared)
+                }
+                Command::Lockfiles(args) => {
+                    let new_path_str = args.new_lockfile.to_string_lossy().into_owned();
+                    let kind = LockfileKind::from_path(&new_path_str).ok_or_else(|| {
                 DepXrayError::LockfileParse {
                     path: new_path_str.clone(),
                     message: "unsupported lockfile name (expected Cargo.lock, package-lock.json, or pnpm-lock.yaml)".to_string(),
                 }
             })?;
-            let old_content = tokio::fs::read_to_string(&args.old_lockfile).await?;
-            let new_content = tokio::fs::read_to_string(&args.new_lockfile).await?;
-            let changes = diff_lockfiles(kind, Some(&old_content), &new_content)?;
-            (
+                    let old_content = tokio::fs::read_to_string(&args.old_lockfile).await?;
+                    let new_content = tokio::fs::read_to_string(&args.new_lockfile).await?;
+                    let changes = diff_lockfiles(kind, Some(&old_content), &new_content)?;
+                    (
+                        changes,
+                        Some(args.old_lockfile.to_string_lossy().into_owned()),
+                        Some(new_path_str),
+                        args.shared,
+                    )
+                }
+                Command::Inspect(_) => unreachable!(),
+            };
+            let policy = load_policy(&shared)?;
+            let report = analyze_changes_with_policy(
                 changes,
-                Some(args.old_lockfile.to_string_lossy().into_owned()),
-                Some(new_path_str),
-                args.shared,
+                base_ref,
+                head_ref,
+                build_fetcher_config(&shared),
+                shared.fail_on.into(),
+                &policy,
             )
+            .await?;
+            (report, shared)
         }
     };
-
-    let report = analyze_changes(
-        changes,
-        base_ref,
-        head_ref,
-        build_fetcher_config(&shared),
-        shared.fail_on.into(),
-    )
-    .await?;
 
     let rendered = render_report(&report, shared.format)?;
     if let Some(output_path) = shared.output {

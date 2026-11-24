@@ -19,6 +19,8 @@ pub enum Command {
     Diff(DiffArgs),
     /// Directly diff two lockfile paths without git.
     Lockfiles(LockfileDiffArgs),
+    /// Inspect a single local `.crate` or `.tgz` tarball directly.
+    Inspect(InspectArgs),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -69,6 +71,10 @@ pub struct SharedOptions {
     /// Maximum concurrent tarball downloads.
     #[arg(long, default_value_t = 16)]
     pub concurrency: usize,
+
+    /// Optional `.dep-xray.toml` suppression policy path (auto-loaded if present in CWD).
+    #[arg(long)]
+    pub config: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
@@ -99,6 +105,15 @@ pub struct LockfileDiffArgs {
 
     /// Path to the head (new) lockfile.
     pub new_lockfile: PathBuf,
+
+    #[command(flatten)]
+    pub shared: SharedOptions,
+}
+
+#[derive(Debug, Args)]
+pub struct InspectArgs {
+    /// Path to a `.crate` or `.tgz` package tarball.
+    pub archive: PathBuf,
 
     #[command(flatten)]
     pub shared: SharedOptions,

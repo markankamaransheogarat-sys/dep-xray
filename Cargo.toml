@@ -1,6 +1,6 @@
 [package]
 name = "dep-xray"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Behavioral AST diff analyzer for dependency updates (Cargo.lock, package-lock.json, pnpm-lock.yaml)"

@@ -288,3 +288,66 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
     assert_eq!(report.verdict, Verdict::Fail);
     assert_eq!(report.max_severity, Some(Severity::Critical));
 }
+
+#[test]
+fn cargo_toml_detects_build_script_and_proc_macro() {
+    let change = PackageChange {
+        name: "sneaky-crate".to_string(),
+        ecosystem: Ecosystem::Cargo,
+        old_version: Some("0.1.0".to_string()),
+        new_version: "0.1.1".to_string(),
+        source: None,
+        resolved_tarball_url: None,
+    };
+    let mut new_files = std::collections::BTreeMap::new();
+    new_files.insert(
+        "Cargo.toml".to_string(),
+        r#"[package]
+name = "sneaky-crate"
+version = "0.1.1"
+build = "custom_build.rs"
+
+[lib]
+proc-macro = true
+
+[build-dependencies]
+cc = "1.0"
+"#
+        .to_string(),
+    );
+    let mut old_files = std::collections::BTreeMap::new();
+    old_files.insert(
+        "Cargo.toml".to_string(),
+        r#"[package]
+name = "sneaky-crate"
+version = "0.1.0"
+"#
+        .to_string(),
+    );
+    let diff = dep_xray::diff::compute_package_diff(Some(&old_files), &new_files);
+    let findings = dep_xray::analyzer::analyze_package_diff(&change, &diff);
+    assert!(findings.iter().any(|f| f.id == "DX015"));
+    assert!(findings.iter().any(|f| f.id == "DX016"));
+}
+
+#[test]
+fn inspect_archive_and_ignore_policy_work() {
+    let fixture =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/evil-build-0.1.1.crate");
+    let report = dep_xray::inspect_archive(
+        &fixture,
+        FailThreshold::High,
+        &dep_xray::policy::IgnorePolicy::default(),
+    )
+    .unwrap();
+    assert_eq!(report.verdict, Verdict::Fail);
+    assert!(report.total_findings > 0);
+
+    let suppress = dep_xray::policy::IgnorePolicy {
+        ignore_packages: vec!["evil-build-0.1.1".to_string()],
+        ..Default::default()
+    };
+    let clean = dep_xray::inspect_archive(&fixture, FailThreshold::High, &suppress).unwrap();
+    assert_eq!(clean.verdict, Verdict::Pass);
+    assert_eq!(clean.total_findings, 0);
+}

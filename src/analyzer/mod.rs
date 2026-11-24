@@ -26,6 +26,10 @@ fn is_package_json(path: &str) -> bool {
     path == "package.json" || path.ends_with("/package.json")
 }
 
+fn is_cargo_toml(path: &str) -> bool {
+    path == "Cargo.toml" || path.ends_with("/Cargo.toml")
+}
+
 fn check_hidden_unicode(change: &PackageChange, file: &ChangedFile) -> Vec<Finding> {
     let mut findings = Vec::new();
     for &line_num in &file.added_lines {
@@ -59,6 +63,10 @@ pub fn analyze_package_diff(change: &PackageChange, diff: &PackageDiff) -> Vec<F
     for file in &diff.changed_files {
         if is_package_json(&file.path) {
             raw_findings.extend(manifest::analyze_package_json(change, file));
+            continue;
+        }
+        if is_cargo_toml(&file.path) {
+            raw_findings.extend(manifest::analyze_cargo_toml(change, file));
             continue;
         }
         if !is_source_file(&file.path) {
